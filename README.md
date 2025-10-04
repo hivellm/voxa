@@ -41,17 +41,53 @@ Voxa follows a modular, event-driven architecture with the following components:
 
 ## 📋 System Requirements
 
-### Hardware
+### Hardware Detection & Fallback Strategy
+
+Voxa implements intelligent hardware detection to ensure optimal performance across different system configurations:
+
+#### **GPU Detection & Requirements**
+- **Recommended**: RTX 4090 (24GB VRAM) or equivalent high-end GPU
+- **Minimum**: RTX 3060 (8GB VRAM) or equivalent mid-range GPU
+- **Fallback**: CPU-only mode with BitNet quantization for systems without adequate GPU
+
+#### **Hardware Verification Process**
+1. **GPU Detection**: Automatically detects available GPU hardware and VRAM
+2. **Performance Assessment**: Evaluates GPU capabilities for LLM inference
+3. **Model Selection**: Chooses appropriate model size based on available resources
+4. **Fallback Activation**: Switches to BitNet CPU mode if GPU is insufficient
+
+#### **BitNet CPU Fallback**
+When GPU hardware is inadequate or unavailable:
+- **Model**: BitNet-1.58B quantized for CPU inference
+- **Quantization**: INT8 quantization for memory efficiency
+- **Performance**: Optimized for CPU-only execution
+- **Memory**: Requires only 2-4GB RAM instead of 24GB+ VRAM
+
+### Hardware Requirements
+
+#### **High-End Configuration (GPU)**
 - **GPU**: RTX 4090 (24GB VRAM) or equivalent
 - **RAM**: 128GB system memory
 - **Storage**: SSD with sufficient space for models
+- **Audio**: Default microphone and speakers
+
+#### **Mid-Range Configuration (GPU)**
+- **GPU**: RTX 3060 (8GB VRAM) or equivalent
+- **RAM**: 32GB system memory
+- **Storage**: SSD with sufficient space for models
+- **Audio**: Default microphone and speakers
+
+#### **Low-End Configuration (CPU Fallback)**
+- **GPU**: Not required (BitNet CPU mode)
+- **RAM**: 8GB system memory minimum
+- **Storage**: SSD with sufficient space for BitNet models
 - **Audio**: Default microphone and speakers
 
 ### Software
 - **OS**: Windows 10/11
 - **Runtime**: .NET 8
 - **Python**: 3.9+ (for ASR subprocess)
-- **CUDA**: Latest version for GPU acceleration
+- **CUDA**: Latest version for GPU acceleration (optional for BitNet fallback)
 
 ## 🚀 Quick Start
 
@@ -69,13 +105,24 @@ cd voxa
 ```
 
 ### 3. Download Models
+
+#### **GPU Configuration (Recommended)**
 ```bash
-# Download Qwen2.5-3B-Instruct
+# Download Qwen2.5-3B-Instruct (Front LLM)
 wget https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf
 
-# Download Qwen2.5-7B-Instruct
+# Download Qwen2.5-7B-Instruct (Planner LLM)
 wget https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF/resolve/main/qwen2.5-7b-instruct-q4_k_m.gguf
+```
 
+#### **CPU Fallback Configuration (BitNet)**
+```bash
+# Download BitNet-1.58B for CPU inference
+wget https://huggingface.co/microsoft/BitNet-1.58B-Instruct-GGUF/resolve/main/bitnet-1.58b-instruct-q4_k_m.gguf
+```
+
+#### **TTS Model (Required for both configurations)**
+```bash
 # Download Piper TTS model
 wget https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/pt/pt_BR/faber/medium/piper_pt_BR_faber_medium.onnx
 ```
@@ -95,18 +142,48 @@ dotnet run --project src/Voxa.UI
 ## ⚙️ Configuration
 
 ### Model Configuration
+
+#### **GPU Configuration (High Performance)**
 ```json
 {
   "models": {
     "front_llm": {
       "name": "Qwen2.5-3B-Instruct",
       "server_url": "http://localhost:8081",
-      "quantization": "Q4_K_M"
+      "quantization": "Q4_K_M",
+      "gpu_layers": 35,
+      "context_length": 4096
     },
     "planner_llm": {
-      "name": "Qwen2.5-7B-Instruct",
+      "name": "Qwen2.5-7B-Instruct", 
       "server_url": "http://localhost:8082",
-      "quantization": "Q4_K_M"
+      "quantization": "Q4_K_M",
+      "gpu_layers": 35,
+      "context_length": 4096
+    }
+  }
+}
+```
+
+#### **CPU Fallback Configuration (BitNet)**
+```json
+{
+  "models": {
+    "front_llm": {
+      "name": "BitNet-1.58B-Instruct",
+      "server_url": "http://localhost:8081", 
+      "quantization": "Q4_K_M",
+      "gpu_layers": 0,
+      "context_length": 2048,
+      "cpu_threads": 8
+    },
+    "planner_llm": {
+      "name": "BitNet-1.58B-Instruct",
+      "server_url": "http://localhost:8082",
+      "quantization": "Q4_K_M", 
+      "gpu_layers": 0,
+      "context_length": 2048,
+      "cpu_threads": 8
     }
   }
 }
@@ -215,17 +292,35 @@ public class CustomTool : ITool
 
 ## 📊 Performance
 
-### Latency Targets
+### Hardware-Based Performance Profiles
+
+#### **High-End GPU (RTX 4090)**
+- **ASR**: < 150ms for partial results
+- **Front LLM**: < 300ms for direct responses  
+- **Planner LLM**: < 800ms for complex reasoning
+- **TTS**: < 200ms for speech generation
+- **Total Pipeline**: < 1.2s for simple queries, < 2.5s for complex tasks
+
+#### **Mid-Range GPU (RTX 3060)**
 - **ASR**: < 200ms for partial results
 - **Front LLM**: < 500ms for direct responses
+- **Planner LLM**: < 1.2s for complex reasoning  
 - **TTS**: < 300ms for speech generation
-- **Total Pipeline**: < 1.5s for simple queries
+- **Total Pipeline**: < 1.8s for simple queries, < 3.5s for complex tasks
+
+#### **CPU Fallback (BitNet)**
+- **ASR**: < 200ms for partial results
+- **Front LLM**: < 1.5s for direct responses
+- **Planner LLM**: < 3.0s for complex reasoning
+- **TTS**: < 300ms for speech generation  
+- **Total Pipeline**: < 2.5s for simple queries, < 5.0s for complex tasks
 
 ### Optimization Tips
-- Use GPU acceleration for LLM inference
-- Enable model quantization (Q4_K_M)
-- Configure appropriate buffer sizes
-- Monitor system resources
+- **GPU Mode**: Use GPU acceleration for LLM inference when available
+- **CPU Mode**: Enable BitNet quantization for memory efficiency
+- **Model Selection**: Choose appropriate model size based on hardware
+- **Buffer Configuration**: Optimize buffer sizes for your system
+- **Resource Monitoring**: Monitor GPU/CPU usage and adjust accordingly
 
 ## 🔧 Troubleshooting
 
@@ -237,15 +332,18 @@ public class CustomTool : ITool
 - Test with Windows audio settings
 
 #### LLM Server Not Responding
-- Check if llama.cpp server is running
-- Verify model file paths
-- Check GPU memory usage
+- **GPU Mode**: Check if llama.cpp server is running with GPU acceleration
+- **CPU Mode**: Verify BitNet model is loaded and CPU threads are configured
+- **Model Files**: Verify model file paths and quantization compatibility
+- **Memory Usage**: Check GPU VRAM or system RAM usage
+- **Hardware Detection**: Ensure hardware detection completed successfully
 
 #### High Latency
-- Reduce model size
-- Enable quantization
-- Check system resources
-- Optimize buffer sizes
+- **GPU Mode**: Reduce model size or enable more aggressive quantization
+- **CPU Mode**: Switch to BitNet for better CPU performance
+- **System Resources**: Check GPU/CPU usage and thermal throttling
+- **Buffer Sizes**: Optimize audio and processing buffer sizes
+- **Model Selection**: Choose appropriate model size for your hardware
 
 ### Logs
 Logs are stored in:
